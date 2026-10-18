@@ -1,4 +1,38 @@
-import pygame, sys, random, json
+import pygame, sys, random, json, os
+
+# Always run relative to this file, no matter where the game is launched from
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+os.chdir(BASE_DIR)
+
+
+def _search(name, root, max_depth=4):
+    """Look for `name` anywhere under `root` (limited depth)."""
+    root_depth = root.rstrip(os.sep).count(os.sep)
+    for dirpath, dirnames, filenames in os.walk(root):
+        if dirpath.count(os.sep) - root_depth >= max_depth:
+            dirnames[:] = []
+        dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+        if name in filenames:
+            return os.path.join(dirpath, name)
+    return None
+
+
+def res(name, *folders):
+    """Find a resource file: known folders first, then search the project folder
+    (including 'font and sound/font', 'font and sound/sound'), then the parent folder."""
+    known = list(folders) + [os.path.join('font and sound', f) for f in folders] + ['']
+    for folder in known:
+        path = os.path.join(BASE_DIR, folder, name)
+        if os.path.exists(path):
+            return path
+    for root in (BASE_DIR, os.path.dirname(BASE_DIR)):
+        found = _search(name, root)
+        if found:
+            return found
+    raise FileNotFoundError(
+        f"Khong tim thay '{name}'. Hay dat no canh file .py hoac trong thu muc 'font and sound'. "
+        f"(thu muc game: {BASE_DIR})")
+
 
 RECORD_FILE = 'records.json'
 MAX_NAME = 10
@@ -227,12 +261,36 @@ def activate_menu(index):
 pygame.mixer.pre_init(frequency=44100, size=16, channels=1, buffer=512)
 pygame.init()
 
+
+
+def load_window_icon():
+    """Icon for the window / Dock. Put your own image at assets/icon.png,
+    otherwise the blue bird is used."""
+    for path in ('assets/icon.png', 'assets/bluebird-midflap.png'):
+        try:
+            img = pygame.image.load(path)
+        except (pygame.error, FileNotFoundError):
+            continue
+        size = 128
+        w, h = img.get_size()
+        k = size / max(w, h)
+        img = pygame.transform.scale(img, (max(1, int(w * k)), max(1, int(h * k))))
+        icon = pygame.Surface((size, size), pygame.SRCALPHA)
+        icon.blit(img, img.get_rect(center=(size // 2, size // 2)))
+        return icon
+    return None
+
+
+_icon = load_window_icon()
+if _icon is not None:
+    pygame.display.set_icon(_icon)   # must be called before set_mode
+
 screen = pygame.display.set_mode((480, 560))
 pygame.display.set_caption('Flappy Bird')
 clock = pygame.time.Clock()
-game_font = pygame.font.Font('04B_19.ttf', 24)
-small_font = pygame.font.Font('04B_19.ttf', 16)
-title_font = pygame.font.Font('04B_19.ttf', 54)
+game_font = pygame.font.Font(res('04B_19.ttf', 'font', 'fonts', 'assets'), 24)
+small_font = pygame.font.Font(res('04B_19.ttf', 'font', 'fonts', 'assets'), 16)
+title_font = pygame.font.Font(res('04B_19.ttf', 'font', 'fonts', 'assets'), 54)
 
 # Game Variables
 gravity = 0.17
@@ -291,9 +349,9 @@ pipe_height = [200, 280, 360]
 game_over_surface = pygame.transform.scale(pygame.image.load('assets/message.png').convert_alpha(), (220, 220))
 game_over_rect = game_over_surface.get_rect(center=(240, 280))
 
-flap_sound = pygame.mixer.Sound('sound/sfx_wing.wav')
-death_sound = pygame.mixer.Sound('sound/sfx_hit.wav')
-score_sound = pygame.mixer.Sound('sound/sfx_point.wav')
+flap_sound = pygame.mixer.Sound(res('sfx_wing.wav', 'sound', 'sounds', 'audio'))
+death_sound = pygame.mixer.Sound(res('sfx_hit.wav', 'sound', 'sounds', 'audio'))
+score_sound = pygame.mixer.Sound(res('sfx_point.wav', 'sound', 'sounds', 'audio'))
 score_sound_countdown = 100
 
 menu_labels = ['PLAY', 'TWO PEOPLE', 'RECORD']
