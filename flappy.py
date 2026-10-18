@@ -1,12 +1,10 @@
 import pygame, sys, random, json, os
 
-# Always run relative to this file, no matter where the game is launched from
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(BASE_DIR)
 
 
 def _search(name, root, max_depth=4):
-    """Look for `name` anywhere under `root` (limited depth)."""
     root_depth = root.rstrip(os.sep).count(os.sep)
     for dirpath, dirnames, filenames in os.walk(root):
         if dirpath.count(os.sep) - root_depth >= max_depth:
@@ -18,8 +16,6 @@ def _search(name, root, max_depth=4):
 
 
 def res(name, *folders):
-    """Find a resource file: known folders first, then search the project folder
-    (including 'font and sound/font', 'font and sound/sound'), then the parent folder."""
     known = list(folders) + [os.path.join('font and sound', f) for f in folders] + ['']
     for folder in known:
         path = os.path.join(BASE_DIR, folder, name)
@@ -38,14 +34,13 @@ RECORD_FILE = 'records.json'
 MAX_NAME = 10
 
 
-# ---------------------------------------------------------------- RECORDS
 def _clean_list(lst):
     out = []
     for x in lst:
         try:
             if isinstance(x, dict):
                 out.append({'name': str(x.get('name', '???'))[:MAX_NAME], 'score': int(x.get('score', 0))})
-            else:  # old format: plain number
+            else:
                 out.append({'name': '???', 'score': int(x)})
         except (ValueError, TypeError):
             continue
@@ -84,7 +79,6 @@ def add_record(key, name, value):
     save_records()
 
 
-# ---------------------------------------------------------------- DRAW / LOGIC
 def draw_floor():
     screen.blit(floor_surface, (floor_x_pos, 480))
     screen.blit(floor_surface, (floor_x_pos + 480, 480))
@@ -125,7 +119,6 @@ def hit_bounds(bird):
 
 
 def handle_collision(b):
-    """Shield = +1 life: absorbs one hit, then 1.5s of invincibility."""
     now = pygame.time.get_ticks()
     invincible = now < b['invincible_until']
     pipe_hit = hit_pipe(b, pipe_list)
@@ -133,7 +126,6 @@ def handle_collision(b):
     if not (pipe_hit or bounds_hit):
         return
 
-    # with shield / invincible, floor and ceiling push the bird back instead of killing it
     if bounds_hit and (invincible or b['shield']):
         if b['rect'].bottom >= 480:
             b['rect'].bottom = 470
@@ -243,7 +235,7 @@ def confirm_name():
 def finish_game():
     global game_active
     game_active = False
-    if mode == 1:   # only single-player scores are recorded
+    if mode == 1:
         add_record('single', birds[0]['name'], score)
 
 
@@ -257,15 +249,11 @@ def activate_menu(index):
         state = 'records'
 
 
-# ---------------------------------------------------------------- INIT
 pygame.mixer.pre_init(frequency=44100, size=16, channels=1, buffer=512)
 pygame.init()
 
 
-
 def load_window_icon():
-    """Icon for the window / Dock. Put your own image at assets/icon.png,
-    otherwise the blue bird is used."""
     for path in ('assets/icon.png', 'assets/bluebird-midflap.png'):
         try:
             img = pygame.image.load(path)
@@ -283,7 +271,7 @@ def load_window_icon():
 
 _icon = load_window_icon()
 if _icon is not None:
-    pygame.display.set_icon(_icon)   # must be called before set_mode
+    pygame.display.set_icon(_icon)
 
 screen = pygame.display.set_mode((480, 560))
 pygame.display.set_caption('Flappy Bird')
@@ -292,12 +280,11 @@ game_font = pygame.font.Font(res('04B_19.ttf', 'font', 'fonts', 'assets'), 24)
 small_font = pygame.font.Font(res('04B_19.ttf', 'font', 'fonts', 'assets'), 16)
 title_font = pygame.font.Font(res('04B_19.ttf', 'font', 'fonts', 'assets'), 54)
 
-# Game Variables
 gravity = 0.17
 game_active = False
 score = 0
-state = 'menu'          # menu / name / playing / records
-mode = 1                # 1 = single, 2 = two people
+state = 'menu'
+mode = 1
 pending_mode = 1
 selected = 0
 name_step = 0
@@ -324,7 +311,7 @@ def load_red_frames():
         return [pygame.transform.scale(
             pygame.image.load(f'assets/{n}.png').convert_alpha(), (30, 21)) for n in names_]
     except (pygame.error, FileNotFoundError):
-        return tint_frames(bird_frames)   # no red sprites -> tint the blue one
+        return tint_frames(bird_frames)
 
 
 bird_frames_p2 = load_red_frames()
@@ -337,7 +324,7 @@ pygame.time.set_timer(BIRDFLAP, 200)
 pipe_surface = pygame.image.load('assets/pipe-green.png')
 pipe_surface = pygame.transform.scale(pipe_surface, (55, 320))
 pipe_list = []
-shield_list = []        # shield pickups on screen (single-player only)
+shield_list = []
 
 shield_img = pygame.image.load('assets/procted.png').convert_alpha()
 shield_pickup_surface = pygame.transform.smoothscale(shield_img, (40, 40))
@@ -361,18 +348,15 @@ for i, r in enumerate(menu_rects):
 back_rect = pygame.Rect(0, 0, 160, 44)
 back_rect.center = (240, 420)
 
-# ---------------------------------------------------------------- MAIN LOOP
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
 
-        # ---- timers
         if event.type == SPAWNPIPE and state == 'playing' and game_active:
             new_pipes = create_pipe()
             pipe_list.extend(new_pipes)
-            # single-player: sometimes put a shield inside the gap of the new pipes
             if mode == 1 and not birds[0]['shield'] and not shield_list and random.random() < 0.35:
                 gap_center_y = new_pipes[1].bottom + 90
                 shield_list.append(shield_pickup_surface.get_rect(
@@ -381,7 +365,6 @@ while True:
         if event.type == BIRDFLAP:
             bird_index = (bird_index + 1) % 3
 
-        # ---- MENU
         if state == 'menu':
             if event.type == pygame.MOUSEMOTION:
                 for i, r in enumerate(menu_rects):
@@ -401,7 +384,6 @@ while True:
                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     activate_menu(selected)
 
-        # ---- NAME ENTRY
         elif state == 'name':
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -415,7 +397,6 @@ while True:
                       and len(name_buffer) < MAX_NAME):
                     name_buffer += event.unicode
 
-        # ---- RECORDS
         elif state == 'records':
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if back_rect.collidepoint(event.pos):
@@ -423,7 +404,6 @@ while True:
             if event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_BACKSPACE):
                 go_menu()
 
-        # ---- PLAYING
         elif state == 'playing':
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -434,11 +414,10 @@ while True:
                             b['movement'] = -6.5
                             flap_sound.play()
                 elif event.key == pygame.K_SPACE:
-                    start_game(mode)    # restart same mode, same names
+                    start_game(mode)
 
     screen.blit(bg_surface, (0, 0))
 
-    # ================================================================ MENU
     if state == 'menu':
         draw_text('FLAPPY', title_font, (240, 90), (255, 220, 60))
         draw_text('BIRD', title_font, (240, 145), (255, 220, 60))
@@ -446,7 +425,6 @@ while True:
             draw_button(r, label, i == selected)
         draw_text('P1: SPACE    P2: UP ARROW', small_font, (240, 450))
 
-    # ================================================================ NAME ENTRY
     elif state == 'name':
         if pending_mode == 1:
             prompt = 'ENTER YOUR NAME'
@@ -466,7 +444,6 @@ while True:
         draw_text(f'{len(name_buffer)}/{MAX_NAME}', small_font, (240, 300))
         draw_text('ENTER: OK    ESC: BACK', small_font, (240, 450))
 
-    # ================================================================ RECORDS
     elif state == 'records':
         draw_text('RECORD', title_font, (240, 70), (255, 220, 60))
         for i in range(5):
@@ -479,7 +456,6 @@ while True:
                 draw_text(f'{i + 1}. -', game_font, (120, y), anchor='midleft')
         draw_button(back_rect, 'BACK', True)
 
-    # ================================================================ GAME
     else:
         if game_active:
             for b in birds:
@@ -492,7 +468,6 @@ while True:
             pipe_list = move_pipes(pipe_list)
             pipe_list = remove_pipes(pipe_list)
 
-            # shield pickups
             for r in shield_list:
                 r.centerx -= 3
             shield_list = [r for r in shield_list if r.centerx > -50]
@@ -561,7 +536,6 @@ while True:
                 draw_text(result, game_font, (240, 80), (255, 220, 60))
             draw_text('SPACE: replay    ESC: menu', small_font, (240, 505))
 
-    # Floor
     floor_x_pos -= 1.5
     draw_floor()
     if floor_x_pos <= -480:
