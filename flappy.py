@@ -82,13 +82,43 @@ def remove_pipes(pipes):
     return [pipe for pipe in pipes if pipe.centerx > -50]
 
 
-def bird_hit(bird, pipes):
-    for pipe in pipes:
-        if bird['rect'].colliderect(pipe):
-            return True
-    if bird['rect'].top <= -40 or bird['rect'].bottom >= 480:
-        return True
-    return False
+def hit_pipe(bird, pipes):
+    return any(bird['rect'].colliderect(pipe) for pipe in pipes)
+
+
+def hit_bounds(bird):
+    return bird['rect'].top <= -40 or bird['rect'].bottom >= 480
+
+
+def handle_collision(b):
+    """Shield = +1 life: absorbs one hit, then 1.5s of invincibility."""
+    now = pygame.time.get_ticks()
+    invincible = now < b['invincible_until']
+    pipe_hit = hit_pipe(b, pipe_list)
+    bounds_hit = hit_bounds(b)
+    if not (pipe_hit or bounds_hit):
+        return
+
+    # with shield / invincible, floor and ceiling push the bird back instead of killing it
+    if bounds_hit and (invincible or b['shield']):
+        if b['rect'].bottom >= 480:
+            b['rect'].bottom = 470
+            b['movement'] = -6.5
+        else:
+            b['rect'].top = -30
+            b['movement'] = 0
+
+    if invincible:
+        return
+    if b['shield']:
+        b['shield'] = False
+        b['invincible_until'] = now + 1500
+        death_sound.play()
+        return
+
+    b['alive'] = False
+    b['score'] = score
+    death_sound.play()
 
 
 def draw_text(text, font, pos, color=(255, 255, 255), shadow=True, anchor='center'):
@@ -120,6 +150,8 @@ def make_bird(x, frames, key, name):
         'score': 0,
         'key': key,
         'name': name,
+        'shield': False,
+        'invincible_until': 0,
     }
 
 
@@ -133,9 +165,10 @@ def tint_frames(frames):
 
 
 def start_game(new_mode):
-    global state, mode, game_active, score, birds, pipe_list, score_sound_countdown
+    global state, mode, game_active, score, birds, pipe_list, score_sound_countdown, shield_list
     mode = new_mode
     pipe_list = []
+    shield_list = []
     score = 0
     score_sound_countdown = 100
     game_active = True
@@ -246,6 +279,11 @@ pygame.time.set_timer(BIRDFLAP, 200)
 pipe_surface = pygame.image.load('assets/pipe-green.png')
 pipe_surface = pygame.transform.scale(pipe_surface, (55, 320))
 pipe_list = []
+shield_list = []        # shield pickups on screen (single-player only)
+
+shield_img = pygame.image.load('assets/procted.png').convert_alpha()
+shield_pickup_surface = pygame.transform.smoothscale(shield_img, (40, 40))
+shield_aura_surface = pygame.transform.smoothscale(shield_img, (64, 64))
 SPAWNPIPE = pygame.USEREVENT
 pygame.time.set_timer(SPAWNPIPE, 1300)
 pipe_height = [200, 280, 360]
@@ -274,7 +312,13 @@ while True:
 
         # ---- timers
         if event.type == SPAWNPIPE and state == 'playing' and game_active:
-            pipe_list.extend(create_pipe())
+            new_pipes = create_pipe()
+            pipe_list.extend(new_pipes)
+            # single-player: sometimes put a shield inside the gap of the new pipes
+            if mode == 1 and not birds[0]['shield'] and not shield_list and random.random() < 0.35:
+                gap_center_y = new_pipes[1].bottom + 90
+                shield_list.append(shield_pickup_surface.get_rect(
+                    center=(520, gap_center_y + random.randint(-45, 45))))
 
         if event.type == BIRDFLAP:
             bird_index = (bird_index + 1) % 3
@@ -385,13 +429,22 @@ while True:
                     continue
                 b['movement'] += gravity
                 b['rect'].centery += b['movement']
-                if bird_hit(b, pipe_list):
-                    b['alive'] = False
-                    b['score'] = score
-                    death_sound.play()
+                handle_collision(b)
 
             pipe_list = move_pipes(pipe_list)
             pipe_list = remove_pipes(pipe_list)
+
+            # shield pickups
+            for r in shield_list:
+                r.centerx -= 3
+            shield_list = [r for r in shield_list if r.centerx > -50]
+            for b in birds:
+                if b['alive'] and not b['shield']:
+                    got = [r for r in shield_list if b['rect'].colliderect(r)]
+                    if got:
+                        b['shield'] = True
+                        shield_list = [r for r in shield_list if r not in got]
+                        score_sound.play()
 
             if any(b['alive'] for b in birds):
                 score += 0.01
@@ -404,11 +457,20 @@ while True:
 
         draw_pipes(pipe_list)
 
+        for r in shield_list:
+            bob = int(4 * pygame.math.Vector2(1, 0).rotate(pygame.time.get_ticks() * 0.4).x)
+            screen.blit(shield_pickup_surface, r.move(0, bob))
+
         for b in birds:
             surf = b['frames'][bird_index]
             if b['alive']:
-                rotated = pygame.transform.rotozoom(surf, -b['movement'] * 3, 1)
-                screen.blit(rotated, rotated.get_rect(center=b['rect'].center))
+                blink_off = (pygame.time.get_ticks() < b['invincible_until']
+                             and (pygame.time.get_ticks() // 100) % 2 == 0)
+                if not blink_off:
+                    rotated = pygame.transform.rotozoom(surf, -b['movement'] * 3, 1)
+                    screen.blit(rotated, rotated.get_rect(center=b['rect'].center))
+                if b['shield']:
+                    screen.blit(shield_aura_surface, shield_aura_surface.get_rect(center=b['rect'].center))
             elif game_active:
                 ghost = surf.copy()
                 ghost.set_alpha(90)

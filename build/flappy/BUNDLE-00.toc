@@ -1,0 +1,3 @@
+([('flappy',
+   '/Users/tranhoang/ndtoanProject/FlappyBird_Python/dist/flappy',
+   'EXECUTABLE')],)
