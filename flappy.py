@@ -1,7 +1,11 @@
-import pygame, sys, random, json, os
+import pygame, sys, random, json, os, math, array
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(BASE_DIR)
+
+# ---------------------------------------------------------------------------
+# Tim file tai nguyen (khong bao loi neu thieu, dung phuong an du phong)
+# ---------------------------------------------------------------------------
 
 
 def _search(name, root, max_depth=4):
@@ -9,28 +13,36 @@ def _search(name, root, max_depth=4):
     for dirpath, dirnames, filenames in os.walk(root):
         if dirpath.count(os.sep) - root_depth >= max_depth:
             dirnames[:] = []
-        dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+        dirnames[:] = [d for d in dirnames if not d.startswith('.') and d != 'node_modules']
         if name in filenames:
             return os.path.join(dirpath, name)
+        # so khop khong phan biet hoa thuong
+        for fn in filenames:
+            if fn.lower() == name.lower():
+                return os.path.join(dirpath, fn)
     return None
 
 
-def res(name, *folders):
-    known = list(folders) + [os.path.join('font and sound', f) for f in folders] + ['']
+def find_res(name, *folders):
+    """Tra ve duong dan file, hoac None neu khong tim thay."""
+    known = list(folders) + [os.path.join('font and sound', f) for f in folders] + ['', 'font and sound']
     for folder in known:
         path = os.path.join(BASE_DIR, folder, name)
         if os.path.exists(path):
             return path
     for root in (BASE_DIR, os.path.dirname(BASE_DIR)):
+        if '.venv' in root:
+            continue
         found = _search(name, root)
         if found:
             return found
-    raise FileNotFoundError(
-        f"Khong tim thay '{name}'. Hay dat no canh file .py hoac trong thu muc 'font and sound'. "
-        f"(thu muc game: {BASE_DIR})")
+    return None
 
 
-RECORD_FILE = 'records.json'
+# ---------------------------------------------------------------------------
+# Records
+# ---------------------------------------------------------------------------
+RECORD_FILE = os.path.join(BASE_DIR, 'records.json')
 MAX_NAME = 10
 
 
@@ -79,6 +91,9 @@ def add_record(key, name, value):
     save_records()
 
 
+# ---------------------------------------------------------------------------
+# Game helpers
+# ---------------------------------------------------------------------------
 def draw_floor():
     screen.blit(floor_surface, (floor_x_pos, 480))
     screen.blit(floor_surface, (floor_x_pos + 480, 480))
@@ -102,8 +117,7 @@ def draw_pipes(pipes):
         if pipe.bottom >= 520:
             screen.blit(pipe_surface, pipe)
         else:
-            flip_pipe = pygame.transform.flip(pipe_surface, False, True)
-            screen.blit(flip_pipe, pipe)
+            screen.blit(pipe_surface_flipped, pipe)
 
 
 def remove_pipes(pipes):
@@ -249,15 +263,27 @@ def activate_menu(index):
         state = 'records'
 
 
-pygame.mixer.pre_init(frequency=44100, size=16, channels=1, buffer=512)
+# ---------------------------------------------------------------------------
+# Khoi tao pygame
+# ---------------------------------------------------------------------------
+pygame.mixer.pre_init(frequency=44100, size=-16, channels=1, buffer=512)
 pygame.init()
 
+SCREEN_W, SCREEN_H = 480, 560
+screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+pygame.display.set_caption('Flappy Bird')
+clock = pygame.time.Clock()
 
+
+# ---- Icon ------------------------------------------------------------------
 def load_window_icon():
-    for path in ('assets/icon.png', 'assets/bluebird-midflap.png'):
+    for name in ('icon.png', 'bluebird-midflap.png'):
+        path = find_res(name, 'assets')
+        if not path:
+            continue
         try:
             img = pygame.image.load(path)
-        except (pygame.error, FileNotFoundError):
+        except pygame.error:
             continue
         size = 128
         w, h = img.get_size()
@@ -273,13 +299,203 @@ _icon = load_window_icon()
 if _icon is not None:
     pygame.display.set_icon(_icon)
 
-screen = pygame.display.set_mode((480, 560))
-pygame.display.set_caption('Flappy Bird')
-clock = pygame.time.Clock()
-game_font = pygame.font.Font(res('04B_19.ttf', 'font', 'fonts', 'assets'), 24)
-small_font = pygame.font.Font(res('04B_19.ttf', 'font', 'fonts', 'assets'), 16)
-title_font = pygame.font.Font(res('04B_19.ttf', 'font', 'fonts', 'assets'), 54)
 
+# ---- Font (co phuong an du phong) -------------------------------------------
+_FONT_PATH = find_res('04B_19.ttf', 'font', 'fonts', 'assets')
+if _FONT_PATH is None:
+    print("[CANH BAO] Khong tim thay '04B_19.ttf' -> dung font mac dinh cua pygame.")
+
+
+def load_font(size):
+    if _FONT_PATH:
+        try:
+            return pygame.font.Font(_FONT_PATH, size)
+        except (pygame.error, OSError):
+            pass
+    return pygame.font.Font(None, int(size * 1.3))
+
+
+game_font = load_font(24)
+small_font = load_font(16)
+title_font = load_font(54)
+
+
+# ---- Anh (co phuong an du phong) --------------------------------------------
+def load_img(name, size, fallback, alpha=True):
+    path = find_res(name, 'assets', 'images', 'image', 'img')
+    if path:
+        try:
+            img = pygame.image.load(path)
+            img = img.convert_alpha() if alpha else img.convert()
+            return pygame.transform.scale(img, size)
+        except pygame.error:
+            pass
+    print(f"[CANH BAO] Khong tim thay anh '{name}' -> dung hinh ve tam.")
+    return fallback(size)
+
+
+def fb_background(size):
+    s = pygame.Surface(size)
+    for y in range(size[1]):
+        t = y / size[1]
+        pygame.draw.line(s, (int(90 + 100 * t), int(190 + 40 * t), int(235 + 10 * t)), (0, y), (size[0], y))
+    return s
+
+
+def fb_floor(size):
+    s = pygame.Surface(size)
+    s.fill((222, 216, 149))
+    pygame.draw.rect(s, (115, 191, 46), (0, 0, size[0], 14))
+    pygame.draw.line(s, (84, 56, 71), (0, 14), (size[0], 14), 3)
+    return s
+
+
+def fb_bird(wing):
+    def make(size):
+        s = pygame.Surface(size, pygame.SRCALPHA)
+        w, h = size
+        pygame.draw.ellipse(s, (255, 210, 0), (0, 2, w - 6, h - 4))
+        pygame.draw.ellipse(s, (84, 56, 71), (0, 2, w - 6, h - 4), 1)
+        pygame.draw.circle(s, (255, 255, 255), (w - 13, 8), 4)
+        pygame.draw.circle(s, (0, 0, 0), (w - 12, 8), 2)
+        pygame.draw.polygon(s, (240, 90, 30), [(w - 8, 11), (w, 13), (w - 8, 16)])
+        wy = {0: 14, 1: 11, 2: 7}[wing]
+        pygame.draw.ellipse(s, (255, 240, 140), (4, wy - 3, 11, 7))
+        return s
+    return make
+
+
+def fb_pipe(size):
+    s = pygame.Surface(size)
+    s.fill((115, 191, 46))
+    pygame.draw.rect(s, (160, 225, 80), (6, 0, 8, size[1]))
+    pygame.draw.rect(s, (84, 56, 71), (0, 0, size[0], size[1]), 3)
+    pygame.draw.rect(s, (115, 191, 46), (0, 0, size[0], 24))
+    pygame.draw.rect(s, (84, 56, 71), (0, 0, size[0], 24), 3)
+    return s
+
+
+def fb_shield(size):
+    s = pygame.Surface(size, pygame.SRCALPHA)
+    c = (size[0] // 2, size[1] // 2)
+    pygame.draw.circle(s, (80, 170, 255, 110), c, size[0] // 2 - 1)
+    pygame.draw.circle(s, (200, 235, 255, 230), c, size[0] // 2 - 1, 3)
+    return s
+
+
+def fb_message(size):
+    s = pygame.Surface(size, pygame.SRCALPHA)
+    pygame.draw.rect(s, (222, 216, 149, 235), s.get_rect(), border_radius=14)
+    pygame.draw.rect(s, (84, 56, 71), s.get_rect(), 4, border_radius=14)
+    t = game_font.render('GAME OVER', True, (84, 56, 71))
+    s.blit(t, t.get_rect(center=(size[0] // 2, size[1] // 2)))
+    return s
+
+
+bg_surface = load_img('background-day.png', (SCREEN_W, SCREEN_H), fb_background, alpha=False)
+
+floor_surface = load_img('base.png', (480, 80), fb_floor, alpha=False)
+floor_x_pos = 0
+
+BIRD_SIZE = (30, 21)
+bird_frames = [
+    load_img('bluebird-downflap.png', BIRD_SIZE, fb_bird(0)),
+    load_img('bluebird-midflap.png', BIRD_SIZE, fb_bird(1)),
+    load_img('bluebird-upflap.png', BIRD_SIZE, fb_bird(2)),
+]
+
+
+def load_red_frames():
+    names_ = ['redbird-downflap.png', 'redbird-midflap.png', 'redbird-upflap.png']
+    paths = [find_res(n, 'assets', 'images', 'image', 'img') for n in names_]
+    if all(paths):
+        try:
+            return [pygame.transform.scale(pygame.image.load(p).convert_alpha(), BIRD_SIZE) for p in paths]
+        except pygame.error:
+            pass
+    return tint_frames(bird_frames)
+
+
+bird_frames_p2 = load_red_frames()
+bird_index = 0
+birds = []
+
+BIRDFLAP = pygame.USEREVENT + 1
+pygame.time.set_timer(BIRDFLAP, 200)
+
+pipe_surface = load_img('pipe-green.png', (55, 320), fb_pipe)
+pipe_surface_flipped = pygame.transform.flip(pipe_surface, False, True)
+pipe_list = []
+shield_list = []
+
+_shield_path = find_res('procted.png', 'assets', 'images', 'image', 'img')
+if _shield_path:
+    try:
+        _shield_img = pygame.image.load(_shield_path).convert_alpha()
+        shield_pickup_surface = pygame.transform.smoothscale(_shield_img, (40, 40))
+        shield_aura_surface = pygame.transform.smoothscale(_shield_img, (64, 64))
+    except pygame.error:
+        shield_pickup_surface = fb_shield((40, 40))
+        shield_aura_surface = fb_shield((64, 64))
+else:
+    print("[CANH BAO] Khong tim thay anh 'procted.png' -> dung hinh ve tam.")
+    shield_pickup_surface = fb_shield((40, 40))
+    shield_aura_surface = fb_shield((64, 64))
+
+SPAWNPIPE = pygame.USEREVENT
+pygame.time.set_timer(SPAWNPIPE, 1300)
+pipe_height = [200, 280, 360]
+
+game_over_surface = load_img('message.png', (220, 220), fb_message)
+game_over_rect = game_over_surface.get_rect(center=(240, 280))
+
+
+# ---- Am thanh (co phuong an du phong) ---------------------------------------
+class _SilentSound:
+    def play(self, *a, **k):
+        pass
+
+
+def make_beep(freq, ms, volume=0.25):
+    """Tao tieng bip tong hop khi thieu file .wav"""
+    init = pygame.mixer.get_init()
+    if not init:
+        return _SilentSound()
+    rate, fmt, channels = init
+    n = int(rate * ms / 1000)
+    buf = array.array('h')
+    for i in range(n):
+        env = 1 - i / n
+        v = int(32767 * volume * env * (1 if math.sin(2 * math.pi * freq * i / rate) >= 0 else -1))
+        for _ in range(channels):
+            buf.append(v)
+    try:
+        return pygame.mixer.Sound(buffer=buf.tobytes())
+    except pygame.error:
+        return _SilentSound()
+
+
+def load_sound(name, freq, ms):
+    if pygame.mixer.get_init():
+        path = find_res(name, 'sound', 'sounds', 'audio')
+        if path:
+            try:
+                return pygame.mixer.Sound(path)
+            except pygame.error:
+                pass
+        print(f"[CANH BAO] Khong tim thay am thanh '{name}' -> dung tieng bip.")
+        return make_beep(freq, ms)
+    return _SilentSound()
+
+
+flap_sound = load_sound('sfx_wing.wav', 600, 80)
+death_sound = load_sound('sfx_hit.wav', 160, 220)
+score_sound = load_sound('sfx_point.wav', 900, 100)
+score_sound_countdown = 100
+
+# ---------------------------------------------------------------------------
+# State
+# ---------------------------------------------------------------------------
 gravity = 0.17
 game_active = False
 score = 0
@@ -292,55 +508,6 @@ name_buffer = ''
 records = load_records()
 names = records['names']
 
-bg_surface = pygame.image.load('assets/background-day.png').convert()
-bg_surface = pygame.transform.scale(bg_surface, (480, 560))
-
-floor_surface = pygame.image.load('assets/base.png').convert()
-floor_surface = pygame.transform.scale(floor_surface, (480, 80))
-floor_x_pos = 0
-
-bird_downflap = pygame.transform.scale(pygame.image.load('assets/bluebird-downflap.png').convert_alpha(), (30, 21))
-bird_midflap = pygame.transform.scale(pygame.image.load('assets/bluebird-midflap.png').convert_alpha(), (30, 21))
-bird_upflap = pygame.transform.scale(pygame.image.load('assets/bluebird-upflap.png').convert_alpha(), (30, 21))
-bird_frames = [bird_downflap, bird_midflap, bird_upflap]
-
-
-def load_red_frames():
-    names_ = ['redbird-downflap', 'redbird-midflap', 'redbird-upflap']
-    try:
-        return [pygame.transform.scale(
-            pygame.image.load(f'assets/{n}.png').convert_alpha(), (30, 21)) for n in names_]
-    except (pygame.error, FileNotFoundError):
-        return tint_frames(bird_frames)
-
-
-bird_frames_p2 = load_red_frames()
-bird_index = 0
-birds = []
-
-BIRDFLAP = pygame.USEREVENT + 1
-pygame.time.set_timer(BIRDFLAP, 200)
-
-pipe_surface = pygame.image.load('assets/pipe-green.png')
-pipe_surface = pygame.transform.scale(pipe_surface, (55, 320))
-pipe_list = []
-shield_list = []
-
-shield_img = pygame.image.load('assets/procted.png').convert_alpha()
-shield_pickup_surface = pygame.transform.smoothscale(shield_img, (40, 40))
-shield_aura_surface = pygame.transform.smoothscale(shield_img, (64, 64))
-SPAWNPIPE = pygame.USEREVENT
-pygame.time.set_timer(SPAWNPIPE, 1300)
-pipe_height = [200, 280, 360]
-
-game_over_surface = pygame.transform.scale(pygame.image.load('assets/message.png').convert_alpha(), (220, 220))
-game_over_rect = game_over_surface.get_rect(center=(240, 280))
-
-flap_sound = pygame.mixer.Sound(res('sfx_wing.wav', 'sound', 'sounds', 'audio'))
-death_sound = pygame.mixer.Sound(res('sfx_hit.wav', 'sound', 'sounds', 'audio'))
-score_sound = pygame.mixer.Sound(res('sfx_point.wav', 'sound', 'sounds', 'audio'))
-score_sound_countdown = 100
-
 menu_labels = ['PLAY', 'TWO PEOPLE', 'RECORD']
 menu_rects = [pygame.Rect(0, 0, 240, 50) for _ in menu_labels]
 for i, r in enumerate(menu_rects):
@@ -348,6 +515,9 @@ for i, r in enumerate(menu_rects):
 back_rect = pygame.Rect(0, 0, 160, 44)
 back_rect.center = (240, 420)
 
+# ---------------------------------------------------------------------------
+# Main loop
+# ---------------------------------------------------------------------------
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
