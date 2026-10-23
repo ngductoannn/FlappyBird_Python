@@ -3,10 +3,6 @@ import pygame, sys, random, json, os, math, array
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(BASE_DIR)
 
-# ---------------------------------------------------------------------------
-# Tim file tai nguyen (khong bao loi neu thieu, dung phuong an du phong)
-# ---------------------------------------------------------------------------
-
 
 def _search(name, root, max_depth=4):
     root_depth = root.rstrip(os.sep).count(os.sep)
@@ -16,7 +12,6 @@ def _search(name, root, max_depth=4):
         dirnames[:] = [d for d in dirnames if not d.startswith('.') and d != 'node_modules']
         if name in filenames:
             return os.path.join(dirpath, name)
-        # so khop khong phan biet hoa thuong
         for fn in filenames:
             if fn.lower() == name.lower():
                 return os.path.join(dirpath, fn)
@@ -39,9 +34,6 @@ def find_res(name, *folders):
     return None
 
 
-# ---------------------------------------------------------------------------
-# Records
-# ---------------------------------------------------------------------------
 RECORD_FILE = os.path.join(BASE_DIR, 'records.json')
 MAX_NAME = 10
 
@@ -90,10 +82,6 @@ def add_record(key, name, value):
     records[key] = sorted(records[key], key=lambda e: e['score'], reverse=True)[:5]
     save_records()
 
-
-# ---------------------------------------------------------------------------
-# Game helpers
-# ---------------------------------------------------------------------------
 def draw_floor():
     screen.blit(floor_surface, (floor_x_pos, 480))
     screen.blit(floor_surface, (floor_x_pos + 480, 480))
@@ -263,9 +251,6 @@ def activate_menu(index):
         state = 'records'
 
 
-# ---------------------------------------------------------------------------
-# Khoi tao pygame
-# ---------------------------------------------------------------------------
 pygame.mixer.pre_init(frequency=44100, size=-16, channels=1, buffer=512)
 pygame.init()
 
@@ -275,7 +260,6 @@ pygame.display.set_caption('Flappy Bird')
 clock = pygame.time.Clock()
 
 
-# ---- Icon ------------------------------------------------------------------
 def load_window_icon():
     for name in ('icon.png', 'bluebird-midflap.png'):
         path = find_res(name, 'assets')
@@ -300,7 +284,6 @@ if _icon is not None:
     pygame.display.set_icon(_icon)
 
 
-# ---- Font (co phuong an du phong) -------------------------------------------
 _FONT_PATH = find_res('04B_19.ttf', 'font', 'fonts', 'assets')
 if _FONT_PATH is None:
     print("[CANH BAO] Khong tim thay '04B_19.ttf' -> dung font mac dinh cua pygame.")
@@ -319,8 +302,6 @@ game_font = load_font(24)
 small_font = load_font(16)
 title_font = load_font(54)
 
-
-# ---- Anh (co phuong an du phong) --------------------------------------------
 def load_img(name, size, fallback, alpha=True):
     path = find_res(name, 'assets', 'images', 'image', 'img')
     if path:
@@ -450,14 +431,12 @@ game_over_surface = load_img('message.png', (220, 220), fb_message)
 game_over_rect = game_over_surface.get_rect(center=(240, 280))
 
 
-# ---- Am thanh (co phuong an du phong) ---------------------------------------
 class _SilentSound:
     def play(self, *a, **k):
         pass
 
 
 def make_beep(freq, ms, volume=0.25):
-    """Tao tieng bip tong hop khi thieu file .wav"""
     init = pygame.mixer.get_init()
     if not init:
         return _SilentSound()
@@ -493,9 +472,6 @@ death_sound = load_sound('sfx_hit.wav', 160, 220)
 score_sound = load_sound('sfx_point.wav', 900, 100)
 score_sound_countdown = 100
 
-# ---------------------------------------------------------------------------
-# State
-# ---------------------------------------------------------------------------
 gravity = 0.17
 game_active = False
 score = 0
@@ -515,9 +491,6 @@ for i, r in enumerate(menu_rects):
 back_rect = pygame.Rect(0, 0, 160, 44)
 back_rect.center = (240, 420)
 
-# ---------------------------------------------------------------------------
-# Main loop
-# ---------------------------------------------------------------------------
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
